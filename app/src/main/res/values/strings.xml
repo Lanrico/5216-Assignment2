@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">MediaAccess</string>
+    <string name="record_video_button_text">Record Video</string>
+    <string name="load_video_button_text">Load Video</string>
+    <string name="load_photo_button_text">Load Photo</string>
+    <string name="take_photo_button_text">Take Photo</string>
+    <string name="title_activity_camera">CameraActivity</string>
+</resources>
