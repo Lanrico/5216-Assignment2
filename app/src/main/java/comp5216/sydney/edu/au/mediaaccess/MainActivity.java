@@ -67,8 +67,9 @@ public class MainActivity extends AppCompatActivity {
                 typestr = "audios";
             }
             // Get safe media storage directory depending on type
-            File mediaStorageDir = new
-                    File(getExternalFilesDir(Environment.getExternalStorageDirectory().toString()), APP_TAG);
+//            File mediaStorageDir = new File(getExternalFilesDir(typestr), APP_TAG);
+            File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_PICTURES), APP_TAG);
             // Create the storage directory if it does not exist
             if (!mediaStorageDir.exists()) {
                 mediaStorageDir.mkdirs();
@@ -77,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
             file = new File(mediaStorageDir, fileName);
             // Wrap File object into a content provider, required for API >= 24
             // See https://guides.codepath.com/android/Sharing-Content-withIntents#sharing-files-with-api-24-or-higher
+            Log.i("getFileUri", file.getAbsolutePath());
             if (Build.VERSION.SDK_INT >= 24) {
                 fileUri = FileProvider.getUriForFile(
                         this.getApplicationContext(),
@@ -91,9 +93,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onTakePhotoClick(View v) {
-//        if(!marshmallowPermission.checkPermissionForExternalStorage()){
-//            marshmallowPermission.requestPermissionForExternalStorage();
-//        }
         // Check permissions
         if (!marshmallowPermission.checkPermissionForCamera()) {
             marshmallowPermission.requestPermissionForCamera();
@@ -205,7 +204,7 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         } else if (requestCode == MY_PERMISSIONS_REQUEST_RECORD_VIDEO) {
-//if you are running on emulator remove the if statement
+            //if you are running on emulator remove the if statement
             if (resultCode == RESULT_OK) {
                 Uri takenVideoUri = getFileUri(videoFileName, 1);
                 mVideoView.setVisibility(View.VISIBLE);
