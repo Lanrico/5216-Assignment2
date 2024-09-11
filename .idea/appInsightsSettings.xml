@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="comp5216.sydney.edu.au.mediaaccess" />
+                  <option name="mobileSdkAppId" value="1:165211907274:android:d831c921b0610c02738033" />
+                  <option name="projectId" value="assignment2-6178f" />
+                  <option name="projectNumber" value="165211907274" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

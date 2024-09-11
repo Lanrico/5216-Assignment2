@@ -15,6 +15,7 @@ public class MarshmallowPermission {
     public static final int EXTERNAL_STORAGE_PERMISSION_REQUEST_CODE = 2;
     public static final int CAMERA_PERMISSION_REQUEST_CODE = 3;
     public static final int READFILES_PERMISSION_REQUEST_CODE = 4;
+    public static final int LOCATION_PERMISSION_REQUEST_CODE = 5;
     Activity activity;
 
     public MarshmallowPermission(Activity activity) {
@@ -40,7 +41,22 @@ public class MarshmallowPermission {
 
     public boolean checkPermissionForReadfiles() {
         int result = ContextCompat.checkSelfPermission(activity, Manifest.permission.READ_EXTERNAL_STORAGE);
+        Log.i("Permission", "checkPermissionForReadfiles: " + result);
         return result == PackageManager.PERMISSION_GRANTED;
+    }
+
+    public boolean checkPermissionForLocation() {
+        int result = ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_COARSE_LOCATION);
+        Log.i("Permission", "checkPermissionForLocation: " + result);
+        return result == PackageManager.PERMISSION_GRANTED;
+    }
+
+    public void requestPermissionForLocation() {
+        if (ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.ACCESS_COARSE_LOCATION )) {
+            Toast.makeText(activity, "Microphone permission needed for location. Please allow in App Settings for additional functionality.", Toast.LENGTH_LONG).show();
+        } else {
+            ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION }, LOCATION_PERMISSION_REQUEST_CODE);
+        }
     }
 
     public void requestPermissionForRecord() {

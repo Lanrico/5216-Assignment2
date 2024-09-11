@@ -1,9 +1,13 @@
 package comp5216.sydney.edu.au.mediaaccess;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.icu.text.SimpleDateFormat;
+import android.location.Address;
+import android.location.Geocoder;
+import android.location.Location;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
@@ -17,17 +21,34 @@ import android.widget.Toast;
 import android.widget.VideoView;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
     MarshmallowPermission marshmallowPermission = new MarshmallowPermission(this);
@@ -41,12 +62,25 @@ public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST_RECORD_VIDEO = 103;
     private static final int MY_PERMISSIONS_REQUEST_READ_VIDEOS = 104;
     private static final int MY_PERMISSIONS_REQUEST_RECORD_AUDIO = 105;
+    private static final int MY_PERMISSIONS_REQUEST_LOCATION = 106;
 
     private File file;
+    private FusedLocationProviderClient mFusedLocationProviderClient;
+    private Location mLastKnownLocation = new Location("");
+    private String cityName = "Unknown";
+
+//    FirebaseFirestore mFirebasestore;
+    FirebaseStorage mFirebaseStorage;
+    StorageReference storageReference;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1).build();
+//        mFirebasestore = FirebaseFirestore.getInstance();
+        mFirebaseStorage = FirebaseStorage.getInstance();
+        storageReference = mFirebaseStorage.getReference();
+
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
@@ -54,6 +88,14 @@ public class MainActivity extends AppCompatActivity {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+
+        if(!marshmallowPermission.checkPermissionForLocation()){
+            marshmallowPermission.requestPermissionForLocation();
+        }
+        mFusedLocationProviderClient =
+                LocationServices.getFusedLocationProviderClient(this);
+
+        getDeviceLocation();
     }
 
     // Returns the Uri for a photo/media stored on disk given the fileName and type
@@ -67,9 +109,10 @@ public class MainActivity extends AppCompatActivity {
                 typestr = "audios";
             }
             // Get safe media storage directory depending on type
-//            File mediaStorageDir = new File(getExternalFilesDir(typestr), APP_TAG);
-            File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_PICTURES), APP_TAG);
+            File mediaStorageDir = new File(getExternalFilesDir(typestr), APP_TAG + "/" + cityName);
+//            File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(
+//                    Environment.DIRECTORY_PICTURES), APP_TAG);
+//            File mediaStorageDir = new File(Environment.DIRECTORY_PICTURES, APP_TAG);
             // Create the storage directory if it does not exist
             if (!mediaStorageDir.exists()) {
                 mediaStorageDir.mkdirs();
@@ -93,6 +136,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onTakePhotoClick(View v) {
+        getDeviceLocation();
         // Check permissions
         if (!marshmallowPermission.checkPermissionForCamera()) {
             marshmallowPermission.requestPermissionForCamera();
@@ -110,6 +154,7 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra(MediaStore.EXTRA_OUTPUT, file_uri);
             // If you call startActivityForResult() using an intent that no app can handle, your app will crash.
             // So as long as the result is not null, it's safe to use the intent.
+
             if (intent.resolveActivity(getPackageManager()) != null) {
                 // Start the image capture intent to take photo
                 startActivityForResult(intent, MY_PERMISSIONS_REQUEST_OPEN_CAMERA);
@@ -117,12 +162,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+
     public void onLoadPhotoClick(View view) {
-        // Create intent for picking a photo from the gallery
-        Intent intent = new Intent(Intent.ACTION_PICK,
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-        // Bring up gallery to select a photo
-        startActivityForResult(intent, MY_PERMISSIONS_REQUEST_READ_PHOTOS);
+//        if(!marshmallowPermission.checkPermissionForReadfiles()){
+//            marshmallowPermission.requestPermissionForReadfiles();
+//        }
+//        else{
+            // Create intent for picking a photo from the gallery
+            Intent intent = new Intent(Intent.ACTION_PICK,
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            // Bring up gallery to select a photo
+            startActivityForResult(intent, MY_PERMISSIONS_REQUEST_READ_PHOTOS);
+//        }
     }
 
     public void onLoadVideoClick(View view) {
@@ -135,23 +187,94 @@ public class MainActivity extends AppCompatActivity {
 
     public void onRecordVideoClick(View v) {
         // Check permissions
-        if (!marshmallowPermission.checkPermissionForCamera()
-                || !marshmallowPermission.checkPermissionForExternalStorage()) {
+        if (!marshmallowPermission.checkPermissionForCamera()) {
             marshmallowPermission.requestPermissionForCamera();
         } else {
             // create Intent to capture a video and return control to the calling application
             Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+
             // set file name
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss",
                     Locale.getDefault()).format(new Date());
             videoFileName = "VIDEO_" + timeStamp + ".mp4";
+
             // Create a video file reference
             Uri file_uri = getFileUri(videoFileName, 1);
+
             // add extended data to the intent
             intent.putExtra(MediaStore.EXTRA_OUTPUT, file_uri);
+
             // Start the video record intent to capture video
             startActivityForResult(intent, MY_PERMISSIONS_REQUEST_RECORD_VIDEO);
         }
+    }
+    private void getDeviceLocation() {
+
+        try {
+            if (marshmallowPermission.checkPermissionForLocation()) {
+                Task<Location> locationResult =
+                        mFusedLocationProviderClient.getLastLocation();
+                locationResult.addOnCompleteListener(this, task -> {
+                    if (task.isSuccessful()) {
+                        // Obtain the current location of the device
+                        mLastKnownLocation = task.getResult();
+                        // 获取纬度和经度
+                        double latitude = mLastKnownLocation.getLatitude();
+                        double longitude = mLastKnownLocation.getLongitude();
+                        Log.d("Location", "Latitude: " + latitude + " Longitude: " + longitude);
+                        // 使用 Geocoder 将经纬度转换为城市名称
+                        Geocoder geocoder = new Geocoder(getApplicationContext(), Locale.getDefault());
+                        try {
+                            List<Address> addresses = geocoder.getFromLocation(latitude, longitude, 1);
+                            if (addresses != null && addresses.size() > 0) {
+                                cityName = addresses.get(0).getLocality();
+                                Log.d("Location", "Current city: " + cityName);
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    } else {
+                        Log.d("Location", "Can't get current location.");
+                    }
+                });
+            }
+        } catch (SecurityException e) {
+            Log.e("Exception: %s", e.getMessage());
+        }
+    }
+
+    public void backupToFirebase(File file) {
+        // Create a storage reference from our app
+        StorageReference storageRef = storageReference.child("images/" + cityName + "/" + photoFileName);
+//        // Create a reference to "location/city"
+//        Map<String, Object> data = new HashMap<>();
+//        data.put("city", cityName);
+//        mFirebasestore.collection("cities").document("location")
+//                .set(data)
+//                .addOnSuccessListener(new OnSuccessListener<Void>() {
+//                    @Override
+//                    public void onSuccess(Void aVoid) {
+//                        Log.d("Firebase", "DocumentSnapshot successfully written!");
+//                    }
+//                })
+//                .addOnFailureListener(new OnFailureListener() {
+//                    @Override
+//                    public void onFailure(@NonNull Exception e) {
+//                        Log.w("Firebase", "Error writing document", e);
+//                    }
+//                });
+        // Upload file to Firebase Storage
+        storageRef.putFile(Uri.fromFile(file))
+                .addOnSuccessListener(taskSnapshot -> {
+                    // Get a URL to the uploaded content
+                    Toast.makeText(MainActivity.this, "Upload successful", Toast.LENGTH_SHORT).show();
+                    Log.d("Firebase", "Upload successful");
+                })
+                .addOnFailureListener(exception -> {
+                    // Handle unsuccessful uploads
+                    Toast.makeText(MainActivity.this, "Upload failed", Toast.LENGTH_SHORT).show();
+                    Log.d("Firebase", "Upload failed");
+                });
     }
 
     @Override
@@ -169,6 +292,7 @@ public class MainActivity extends AppCompatActivity {
                 // Load the taken image into a preview
                 ivPreview.setImageBitmap(takenImage);
                 ivPreview.setVisibility(View.VISIBLE);
+                backupToFirebase(file);
             } else { // Result was a failure
                 Toast.makeText(this, "Picture wasn't taken AAA!",
                         Toast.LENGTH_SHORT).show();
@@ -210,12 +334,8 @@ public class MainActivity extends AppCompatActivity {
                 mVideoView.setVisibility(View.VISIBLE);
                 mVideoView.setVideoURI(takenVideoUri);
                 mVideoView.requestFocus();
-                mVideoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                    // Close the progress bar and play the video
-                    public void onPrepared(MediaPlayer mp) {
-                        mVideoView.start();
-                    }
-                });
+                // Close the progress bar and play the video
+                mVideoView.setOnPreparedListener(mp -> mVideoView.start());
 
             }
         }
