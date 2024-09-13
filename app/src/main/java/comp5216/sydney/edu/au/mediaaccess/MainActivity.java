@@ -9,6 +9,7 @@ import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
 import android.media.MediaPlayer;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -109,7 +110,9 @@ public class MainActivity extends AppCompatActivity {
                 typestr = "audios";
             }
             // Get safe media storage directory depending on type
-            File mediaStorageDir = new File(getExternalFilesDir(typestr), APP_TAG + "/" + cityName);
+            File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), cityName);
+//            File mediaStorageDir = new File(Environment.DIRECTORY_PICTURES, APP_TAG + "/" + typestr + "/" + cityName);
+
 //            File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(
 //                    Environment.DIRECTORY_PICTURES), APP_TAG);
 //            File mediaStorageDir = new File(Environment.DIRECTORY_PICTURES, APP_TAG);
@@ -147,7 +150,7 @@ public class MainActivity extends AppCompatActivity {
             // set file name
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss",
                     Locale.getDefault()).format(new Date());
-            photoFileName = "IMG_" + timeStamp + ".jpg";
+            photoFileName = "IMG_" + cityName + "_" + timeStamp + ".jpg";
             // Create a photo file reference
             Uri file_uri = getFileUri(photoFileName, 0);
             // Add extended data to the intent
@@ -196,7 +199,7 @@ public class MainActivity extends AppCompatActivity {
             // set file name
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss",
                     Locale.getDefault()).format(new Date());
-            videoFileName = "VIDEO_" + timeStamp + ".mp4";
+            videoFileName = "VIDEO_" + cityName + "_" + timeStamp + ".mp4";
 
             // Create a video file reference
             Uri file_uri = getFileUri(videoFileName, 1);
@@ -218,16 +221,18 @@ public class MainActivity extends AppCompatActivity {
                     if (task.isSuccessful()) {
                         // Obtain the current location of the device
                         mLastKnownLocation = task.getResult();
-                        // 获取纬度和经度
+
+                        // get latitude and longitude
                         double latitude = mLastKnownLocation.getLatitude();
                         double longitude = mLastKnownLocation.getLongitude();
                         Log.d("Location", "Latitude: " + latitude + " Longitude: " + longitude);
-                        // 使用 Geocoder 将经纬度转换为城市名称
+                        // use Geocoder to covert latitude and longitude to city name
                         Geocoder geocoder = new Geocoder(getApplicationContext(), Locale.getDefault());
                         try {
                             List<Address> addresses = geocoder.getFromLocation(latitude, longitude, 1);
                             if (addresses != null && addresses.size() > 0) {
-                                cityName = addresses.get(0).getLocality();
+                                String city = addresses.get(0).getLocality();
+                                cityName = city.replaceAll("\\s+", "_");
                                 Log.d("Location", "Current city: " + cityName);
                             }
                         } catch (IOException e) {
@@ -243,26 +248,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void backupToFirebase(File file) {
+    public void backupToFirebase(File file, int type) {
+        String typestr = "images"; //type 0 is images, 1 is videos
+        String fileName = file.getName();
+        if (type == 1) {
+            typestr = "videos";
+        }
         // Create a storage reference from our app
-        StorageReference storageRef = storageReference.child("images/" + cityName + "/" + photoFileName);
-//        // Create a reference to "location/city"
-//        Map<String, Object> data = new HashMap<>();
-//        data.put("city", cityName);
-//        mFirebasestore.collection("cities").document("location")
-//                .set(data)
-//                .addOnSuccessListener(new OnSuccessListener<Void>() {
-//                    @Override
-//                    public void onSuccess(Void aVoid) {
-//                        Log.d("Firebase", "DocumentSnapshot successfully written!");
-//                    }
-//                })
-//                .addOnFailureListener(new OnFailureListener() {
-//                    @Override
-//                    public void onFailure(@NonNull Exception e) {
-//                        Log.w("Firebase", "Error writing document", e);
-//                    }
-//                });
+        StorageReference storageRef = storageReference.child(typestr + "/" + cityName + "/" + file.getName());
         // Upload file to Firebase Storage
         storageRef.putFile(Uri.fromFile(file))
                 .addOnSuccessListener(taskSnapshot -> {
@@ -277,6 +270,16 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
+    private void scanFile(String path) {
+
+        MediaScannerConnection.scanFile(MainActivity.this,
+                new String[] { path }, null,
+                (path1, uri) -> Log.i("TAG", "Finished scanning " + path1));
+    }
+
+    //TODO: Batch backup to Firebase, First check the list in local,
+    // and compare with the list in Firebase, then upload the new files to Firebase
+
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -289,10 +292,12 @@ public class MainActivity extends AppCompatActivity {
             if (resultCode == RESULT_OK) {
                 // by this point we have the camera photo on disk
                 Bitmap takenImage = BitmapFactory.decodeFile(file.getAbsolutePath());
+                // scan the image to make it appear in the gallery
+                scanFile(file.getAbsolutePath());
                 // Load the taken image into a preview
                 ivPreview.setImageBitmap(takenImage);
                 ivPreview.setVisibility(View.VISIBLE);
-                backupToFirebase(file);
+                backupToFirebase(file, 0);
             } else { // Result was a failure
                 Toast.makeText(this, "Picture wasn't taken AAA!",
                         Toast.LENGTH_SHORT).show();
@@ -320,23 +325,21 @@ public class MainActivity extends AppCompatActivity {
                 mVideoView.setVisibility(View.VISIBLE);
                 mVideoView.setVideoURI(videoUri);
                 mVideoView.requestFocus();
-                mVideoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-                    // Close the progress bar and play the video
-                    public void onPrepared(MediaPlayer mp) {
-                        mVideoView.start();
-                    }
-                });
+                // Close the progress bar and play the video
+                mVideoView.setOnPreparedListener(mp -> mVideoView.start());
             }
         } else if (requestCode == MY_PERMISSIONS_REQUEST_RECORD_VIDEO) {
             //if you are running on emulator remove the if statement
             if (resultCode == RESULT_OK) {
                 Uri takenVideoUri = getFileUri(videoFileName, 1);
+                // scan the image to make it appear in the gallery
+                scanFile(file.getAbsolutePath());
                 mVideoView.setVisibility(View.VISIBLE);
                 mVideoView.setVideoURI(takenVideoUri);
                 mVideoView.requestFocus();
                 // Close the progress bar and play the video
                 mVideoView.setOnPreparedListener(mp -> mVideoView.start());
-
+                backupToFirebase(file, 1);
             }
         }
     }
