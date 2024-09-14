@@ -1,30 +1,37 @@
 package comp5216.sydney.edu.au.mediaaccess;
 
+import android.annotation.SuppressLint;
+import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.icu.text.SimpleDateFormat;
 import android.location.Address;
 import android.location.Geocoder;
 import android.location.Location;
-import android.media.MediaPlayer;
 import android.media.MediaScannerConnection;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.PowerManager;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.Switch;
 import android.widget.Toast;
 import android.widget.VideoView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -34,22 +41,26 @@ import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
-import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
-import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.android.gms.tasks.Tasks;
 import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageMetadata;
 import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     MarshmallowPermission marshmallowPermission = new MarshmallowPermission(this);
@@ -57,6 +68,12 @@ public class MainActivity extends AppCompatActivity {
     public String photoFileName = "photo.jpg";
     public String videoFileName = "video.mp4";
     public String audioFileName = "audio.3gp";
+
+    Switch autoBackupSwitch;
+    Switch saveBatterySwitch;
+    Switch saveNetworkSwitch;
+    Button backupButton;
+
     //request codes
     private static final int MY_PERMISSIONS_REQUEST_OPEN_CAMERA = 101;
     private static final int MY_PERMISSIONS_REQUEST_READ_PHOTOS = 102;
@@ -74,11 +91,17 @@ public class MainActivity extends AppCompatActivity {
     FirebaseStorage mFirebaseStorage;
     StorageReference storageReference;
 
+    MediaItemDao mediaItemDao;
+    MediaItemDB db;
+
+    Boolean isAutoBackup = true;
+    Boolean saveBattery = false;
+    Boolean saveNetwork = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1).build();
-//        mFirebasestore = FirebaseFirestore.getInstance();
+
         mFirebaseStorage = FirebaseStorage.getInstance();
         storageReference = mFirebaseStorage.getReference();
 
@@ -90,6 +113,52 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
+
+        autoBackupSwitch = findViewById(R.id.autoBackupSwitch);
+        autoBackupSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            isAutoBackup = isChecked;
+            Log.d("AutoBackup", "Auto backup is " + isAutoBackup);
+        });
+        backupButton = findViewById(R.id.backupButton);
+
+        saveBatterySwitch = findViewById(R.id.batteryModeSwitch);
+        saveBatterySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveBattery = isChecked;
+            Log.d("SaveBattery", "Save battery is " + saveBattery);
+            if(saveBattery) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                builder.setTitle(R.string.battery_title)
+                        .setMessage(R.string.battery_msg)
+                        .setPositiveButton(R.string.yes, (dialogInterface, i) -> {
+                            // Nothing happens
+                        })
+                        .setNegativeButton(R.string.no, (dialogInterface, i) -> {
+                            saveBatterySwitch.setChecked(false);
+                            saveBattery = false;
+                        });
+                builder.create().show();
+            }
+        });
+
+        saveNetworkSwitch = findViewById(R.id.wifiModeSwitch);
+        saveNetworkSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            saveNetwork = isChecked;
+            Log.d("SaveNetwork", "Save network is " + saveNetwork);
+            if(saveNetwork) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                builder.setTitle(R.string.network_title)
+                        .setMessage(R.string.network_msg)
+                        .setPositiveButton(R.string.yes, (dialogInterface, i) -> {
+                            // Nothing happens
+                        })
+                        .setNegativeButton(R.string.no, (dialogInterface, i) -> {
+                            saveNetworkSwitch.setChecked(false);
+                            saveNetwork = false;
+                        });
+                builder.create().show();
+            }
+        });
+
         if(!marshmallowPermission.checkPermissionForLocation()){
             marshmallowPermission.requestPermissionForLocation();
         }
@@ -97,6 +166,11 @@ public class MainActivity extends AppCompatActivity {
                 LocationServices.getFusedLocationProviderClient(this);
 
         getDeviceLocation();
+
+        //Initialize the database
+        db = MediaItemDB.getDatabase(this.getApplication().getApplicationContext());
+        mediaItemDao = db.mediaItemDao();
+
     }
 
     // Returns the Uri for a photo/media stored on disk given the fileName and type
@@ -139,7 +213,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onTakePhotoClick(View v) {
-        getDeviceLocation();
         // Check permissions
         if (!marshmallowPermission.checkPermissionForCamera()) {
             marshmallowPermission.requestPermissionForCamera();
@@ -150,7 +223,7 @@ public class MainActivity extends AppCompatActivity {
             // set file name
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss",
                     Locale.getDefault()).format(new Date());
-            photoFileName = "IMG_" + cityName + "_" + timeStamp + ".jpg";
+            photoFileName = "IMG_" + timeStamp + ".jpg";
             // Create a photo file reference
             Uri file_uri = getFileUri(photoFileName, 0);
             // Add extended data to the intent
@@ -199,7 +272,7 @@ public class MainActivity extends AppCompatActivity {
             // set file name
             String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss",
                     Locale.getDefault()).format(new Date());
-            videoFileName = "VIDEO_" + cityName + "_" + timeStamp + ".mp4";
+            videoFileName = "VIDEO_" + timeStamp + ".mp4";
 
             // Create a video file reference
             Uri file_uri = getFileUri(videoFileName, 1);
@@ -211,8 +284,106 @@ public class MainActivity extends AppCompatActivity {
             startActivityForResult(intent, MY_PERMISSIONS_REQUEST_RECORD_VIDEO);
         }
     }
-    private void getDeviceLocation() {
 
+    //Backup all non-backup media files to Firebase Storage
+    @SuppressLint("SetTextI18n")
+    public void onBackupClick(View view) {
+        backupButton.setEnabled(false);
+        backupButton.setText("Uploading...");
+
+        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                // Get non-backup all media files from the local database
+            List<MediaItem> mediaItems = mediaItemDao.listAllNotBackup();
+            List<UploadTask> uploadTasks = new ArrayList<>();
+            CountDownLatch latch = new CountDownLatch(mediaItems.size());  // 为每个媒体文件创建一个计数
+
+            for (MediaItem mediaItem : mediaItems) {
+                final StorageReference fileRef = storageReference.child(mediaItem.getFileType() + "/" + mediaItem.getCity() + "/" + mediaItem.getFileName());
+
+                // Check if the file exists before uploading
+                fileRef.getMetadata().addOnSuccessListener(storageMetadata -> {
+                    // File already exists, skip uploading
+//                    mediaItemDao.updateBackup(mediaItem.getID());
+                    Executors.newSingleThreadExecutor().execute(() -> {
+                        mediaItemDao.updateBackup(mediaItem.getID());
+                        Log.d("Upload", mediaItem.getFileName() + " already exists, skipping upload.");
+                    });
+                    latch.countDown();
+                }).addOnFailureListener(exception -> {
+                    // File does not exist, proceed with upload
+                    UploadTask uploadTask = fileRef.putFile(Uri.fromFile(new File(mediaItem.getLocalPath())));
+                    uploadTasks.add(uploadTask);
+                    Log.d("Upload", "Uploading " + mediaItem.getFileName());
+
+                    // Optionally handle individual file upload success/failure
+                    uploadTask.addOnSuccessListener(taskSnapshot ->{
+                                        Log.d("Upload",
+                                                mediaItem.getFileName() + " uploaded successfully.");
+                                        latch.countDown();
+                                    }
+
+
+                            )
+                            .addOnFailureListener(exception1 ->{
+                                        Log.e("Upload",
+                                                "Error uploading " + mediaItem.getFileName() +
+                                                        ": " + exception1.getMessage());
+                                        latch.countDown();
+                                    }
+
+                            );
+                });
+            }
+            try {
+                latch.await();  // wait for all uploads to complete
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            // Check if there are files to upload
+            if (uploadTasks.isEmpty()) {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "No files to upload.", Toast.LENGTH_SHORT).show();
+                    backupButton.setEnabled(true);
+                    backupButton.setText("Backup Manually");
+                });
+                Log.d("Upload", "No files to upload.");
+                return;
+            }
+
+            // Handle all uploads after the loop
+            Log.d("Upload", "Uploaded " + uploadTasks.size() + " files.");
+            Tasks.whenAllSuccess(uploadTasks)
+                    .addOnSuccessListener(results ->
+                            {
+                                Log.d("Upload", uploadTasks.size() + "files uploaded successfully.");
+                                Toast.makeText(MainActivity.this,
+                                        "All files uploaded successfully.",
+                                        Toast.LENGTH_SHORT).show();
+                                for (MediaItem mediaItem : mediaItems) {
+                                    Executors.newSingleThreadExecutor().execute(() -> {
+                                        mediaItemDao.updateBackup(mediaItem.getID());
+                                    });
+                                }
+                                backupButton.setEnabled(true);
+                                backupButton.setText("Backup Manually");
+                            }
+                    )
+                    .addOnFailureListener(exception ->
+                            {
+                                Log.e("Upload",
+                                        "Error uploading files: " + exception.getMessage());
+                                Toast.makeText(MainActivity.this,
+                                        "Error uploading files failed, please try again.",
+                                        Toast.LENGTH_SHORT).show();
+                                backupButton.setEnabled(true);
+                                backupButton.setText("Backup Manually");
+                            }
+                    );
+
+        });
+    }
+
+    private void getDeviceLocation() {
         try {
             if (marshmallowPermission.checkPermissionForLocation()) {
                 Task<Location> locationResult =
@@ -248,26 +419,116 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void backupToFirebase(File file, int type) {
+    public void autoBackupToFirebase(File file, int type) {
+        getDeviceLocation();
         String typestr = "images"; //type 0 is images, 1 is videos
         String fileName = file.getName();
         if (type == 1) {
             typestr = "videos";
+        }
+        MediaItem mediaItem = new MediaItem(
+                fileName,
+                file.getAbsolutePath(),
+                typestr,
+                cityName,
+                true);
+        if(saveBattery || saveNetwork) {
+            // Check if the device is charging
+            IntentFilter chargefilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryStatus = this.registerReceiver(null, chargefilter);
+            int status = batteryStatus.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+            boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING;
+            Log.d("AutoBackup", "Is charging: " + isCharging);
+            //Check if the device battery is below 50%
+            int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+            float batteryPct = level / (float) scale;
+            if (saveBattery && batteryPct < 0.5 && !isCharging) {
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    // add to the database
+                    mediaItem.setBackup(false);
+                    mediaItemDao.insert(mediaItem);
+                });
+                try {
+                    future.get();
+                } catch (ExecutionException | InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Log.d("AutoBackup", "On power saving mode. Battery is below 50% and no Charging, skipping backup.");
+                return;
+            }
+
+            //Check if the device is in power saving mode
+            if (saveBattery && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+                if (powerManager.isPowerSaveMode()) {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        // add to the database
+                        mediaItem.setBackup(false);
+                        mediaItemDao.insert(mediaItem);
+                    });
+                    try {
+                        future.get();
+                    } catch (ExecutionException | InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    Log.d("AutoBackup", "On power saving mode. Device is in power saving mode, skipping backup.");
+                    return;
+                }
+            }
+
+            // Check if the device is connected to a Wi-Fi network
+            ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkInfo wifi = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
+            if (saveNetwork && !wifi.isConnected()) {
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    // add to the database
+                    mediaItem.setBackup(false);
+                    mediaItemDao.insert(mediaItem);
+                });
+                try {
+                    future.get();
+                } catch (ExecutionException | InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                Log.d("AutoBackup", "On flow saving mode. Device is not connected to Wi-Fi, skipping backup.");
+                return;
+            }
         }
         // Create a storage reference from our app
         StorageReference storageRef = storageReference.child(typestr + "/" + cityName + "/" + file.getName());
         // Upload file to Firebase Storage
         storageRef.putFile(Uri.fromFile(file))
                 .addOnSuccessListener(taskSnapshot -> {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        // add to the database
+                        mediaItemDao.insert(mediaItem);
+                    });
+                    try {
+                        future.get();
+                    } catch (ExecutionException | InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
                     // Get a URL to the uploaded content
                     Toast.makeText(MainActivity.this, "Upload successful", Toast.LENGTH_SHORT).show();
                     Log.d("Firebase", "Upload successful");
                 })
                 .addOnFailureListener(exception -> {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        // add to the database
+                        mediaItem.setBackup(false);
+                        mediaItemDao.insert(mediaItem);
+                    });
+                    try {
+                        future.get();
+                    } catch (ExecutionException | InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
                     // Handle unsuccessful uploads
                     Toast.makeText(MainActivity.this, "Upload failed", Toast.LENGTH_SHORT).show();
                     Log.d("Firebase", "Upload failed");
                 });
+
     }
 
     private void scanFile(String path) {
@@ -276,9 +537,6 @@ public class MainActivity extends AppCompatActivity {
                 new String[] { path }, null,
                 (path1, uri) -> Log.i("TAG", "Finished scanning " + path1));
     }
-
-    //TODO: Batch backup to Firebase, First check the list in local,
-    // and compare with the list in Firebase, then upload the new files to Firebase
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -297,7 +555,26 @@ public class MainActivity extends AppCompatActivity {
                 // Load the taken image into a preview
                 ivPreview.setImageBitmap(takenImage);
                 ivPreview.setVisibility(View.VISIBLE);
-                backupToFirebase(file, 0);
+                if(isAutoBackup){
+                    autoBackupToFirebase(file, 0);
+                }
+                else {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        MediaItem mediaItem = new MediaItem(
+                                file.getName(),
+                                file.getAbsolutePath(),
+                                "images",
+                                cityName,
+                                false);
+                        // add to the database
+                        mediaItemDao.insert(mediaItem);
+                    });
+                    try {
+                        future.get();
+                    } catch (ExecutionException | InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
             } else { // Result was a failure
                 Toast.makeText(this, "Picture wasn't taken AAA!",
                         Toast.LENGTH_SHORT).show();
@@ -339,7 +616,26 @@ public class MainActivity extends AppCompatActivity {
                 mVideoView.requestFocus();
                 // Close the progress bar and play the video
                 mVideoView.setOnPreparedListener(mp -> mVideoView.start());
-                backupToFirebase(file, 1);
+                if(isAutoBackup){
+                    autoBackupToFirebase(file, 1);
+                }
+                else {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        MediaItem mediaItem = new MediaItem(
+                                file.getName(),
+                                file.getAbsolutePath(),
+                                "videos",
+                                cityName,
+                                false);
+                        // add to the database
+                        mediaItemDao.insert(mediaItem);
+                    });
+                    try {
+                        future.get();
+                    } catch (ExecutionException | InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
             }
         }
     }

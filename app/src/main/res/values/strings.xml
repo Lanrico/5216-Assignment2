@@ -5,4 +5,17 @@
     <string name="load_photo_button_text">Load Photo</string>
     <string name="take_photo_button_text">Take Photo</string>
     <string name="title_activity_camera">CameraActivity</string>
+    <string name="auto_backup_switch_text">Auto Backup</string>
+    <string name="backup_button_text">Backup Manually</string>
+    <string name="battery_mode_switch_text">Save Power</string>
+    <string name="wifi_mode_switch_text">Save Flow</string>
+    <string name="yes">YES</string>
+    <string name="no">NO</string>
+    <string name="battery_msg">When you turn on your phone\'s Power Saving Mode, or when the
+        battery level is below 50%, it will stop the automatic backup of photos and videos, and you
+        need to backup them manually afterwards.</string>
+    <string name="battery_title">Turn on Power Saving Mode</string>
+    <string name="network_title">Turn on Flow Saving Mode</string>
+    <string name="network_msg">Automatic backups will stop when using cellular data and restart
+        when using the internet.</string>
 </resources>

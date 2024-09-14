@@ -45,15 +45,71 @@
 
         <VideoView
             android:id="@+id/videoview"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_above="@+id/takephoto"
-            />
+            android:layout_below="@+id/toolbar2"/>
         <ImageView
             android:id="@+id/photopreview"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="640dp"
             android:layout_above="@+id/takephoto"
-            />
+            android:layout_below="@+id/toolbar2"/>
+
+
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="?attr/actionBarSize"
+            android:layout_alignParentTop="true"
+            android:theme="?attr/actionBarTheme" >
+
+            <Switch
+                android:id="@+id/autoBackupSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:layout_gravity ="start"
+                android:text="@string/auto_backup_switch_text" />
+            <Switch
+                android:id="@+id/batteryModeSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="start"
+                android:checked="false"
+                android:text="@string/battery_mode_switch_text" />
+
+            <Switch
+                android:id="@+id/wifiModeSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="start"
+                android:checked="false"
+                android:text="@string/wifi_mode_switch_text" />
+
+        </androidx.appcompat.widget.Toolbar>
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/toolbar"
+            android:minHeight="?attr/actionBarSize"
+            android:theme="?attr/actionBarTheme">
+
+            <Button
+                android:id="@+id/backupButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity ="end"
+
+                android:text="@string/backup_button_text"
+                android:layout_above="@+id/loadvideo"
+                android:onClick="onBackupClick"/>
+
+        </androidx.appcompat.widget.Toolbar>
+
     </RelativeLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
