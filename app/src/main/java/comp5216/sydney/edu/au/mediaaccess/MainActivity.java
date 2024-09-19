@@ -30,7 +30,6 @@ import android.widget.Toast;
 import android.widget.VideoView;
 
 import androidx.activity.EdgeToEdge;
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 import androidx.core.graphics.Insets;
@@ -38,15 +37,10 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.Priority;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
 import com.google.firebase.storage.FirebaseStorage;
-import com.google.firebase.storage.StorageMetadata;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
@@ -64,10 +58,8 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     MarshmallowPermission marshmallowPermission = new MarshmallowPermission(this);
-    public final String APP_TAG = "MobileComputingTutorial";
     public String photoFileName = "photo.jpg";
     public String videoFileName = "video.mp4";
-    public String audioFileName = "audio.3gp";
 
     Switch autoBackupSwitch;
     Switch saveBatterySwitch;
@@ -79,15 +71,12 @@ public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST_READ_PHOTOS = 102;
     private static final int MY_PERMISSIONS_REQUEST_RECORD_VIDEO = 103;
     private static final int MY_PERMISSIONS_REQUEST_READ_VIDEOS = 104;
-    private static final int MY_PERMISSIONS_REQUEST_RECORD_AUDIO = 105;
-    private static final int MY_PERMISSIONS_REQUEST_LOCATION = 106;
 
     private File file;
     private FusedLocationProviderClient mFusedLocationProviderClient;
     private Location mLastKnownLocation = new Location("");
     private String cityName = "Unknown";
 
-//    FirebaseFirestore mFirebasestore;
     FirebaseStorage mFirebaseStorage;
     StorageReference storageReference;
 
@@ -102,9 +91,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Initialize Firebase Storage
         mFirebaseStorage = FirebaseStorage.getInstance();
         storageReference = mFirebaseStorage.getReference();
 
+        // Set the layout
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
@@ -113,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-
+        // Set up the UI components
         autoBackupSwitch = findViewById(R.id.autoBackupSwitch);
         autoBackupSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             isAutoBackup = isChecked;
@@ -121,6 +112,7 @@ public class MainActivity extends AppCompatActivity {
         });
         backupButton = findViewById(R.id.backupButton);
 
+        // Set up the battery and network saving switch functionality
         saveBatterySwitch = findViewById(R.id.batteryModeSwitch);
         saveBatterySwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             saveBattery = isChecked;
@@ -140,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Set up the network saving switch functionality
         saveNetworkSwitch = findViewById(R.id.wifiModeSwitch);
         saveNetworkSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             saveNetwork = isChecked;
@@ -159,37 +152,30 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Check and request for location permissions
         if(!marshmallowPermission.checkPermissionForLocation()){
             marshmallowPermission.requestPermissionForLocation();
         }
         mFusedLocationProviderClient =
                 LocationServices.getFusedLocationProviderClient(this);
 
+        // Initialize the location
         getDeviceLocation();
 
-        //Initialize the database
+        //Initialize the room database
         db = MediaItemDB.getDatabase(this.getApplication().getApplicationContext());
         mediaItemDao = db.mediaItemDao();
-
     }
 
     // Returns the Uri for a photo/media stored on disk given the fileName and type
     public Uri getFileUri(String fileName, int type) {
+        getDeviceLocation();
         Uri fileUri = null;
         try {
-            String typestr = "images"; //default to images type
-            if (type == 1) {
-                typestr = "videos";
-            } else if (type != 0) {
-                typestr = "audios";
-            }
             // Get safe media storage directory depending on type
-            File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), cityName);
-//            File mediaStorageDir = new File(Environment.DIRECTORY_PICTURES, APP_TAG + "/" + typestr + "/" + cityName);
-
-//            File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(
-//                    Environment.DIRECTORY_PICTURES), APP_TAG);
-//            File mediaStorageDir = new File(Environment.DIRECTORY_PICTURES, APP_TAG);
+            File mediaStorageDir = new File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                    cityName);
             // Create the storage directory if it does not exist
             if (!mediaStorageDir.exists()) {
                 mediaStorageDir.mkdirs();
@@ -197,7 +183,6 @@ public class MainActivity extends AppCompatActivity {
             // Create the file target for the media based on filename
             file = new File(mediaStorageDir, fileName);
             // Wrap File object into a content provider, required for API >= 24
-            // See https://guides.codepath.com/android/Sharing-Content-withIntents#sharing-files-with-api-24-or-higher
             Log.i("getFileUri", file.getAbsolutePath());
             if (Build.VERSION.SDK_INT >= 24) {
                 fileUri = FileProvider.getUriForFile(
@@ -212,6 +197,7 @@ public class MainActivity extends AppCompatActivity {
         return fileUri;
     }
 
+    // Take a photo using the camera
     public void onTakePhotoClick(View v) {
         // Check permissions
         if (!marshmallowPermission.checkPermissionForCamera()) {
@@ -228,7 +214,8 @@ public class MainActivity extends AppCompatActivity {
             Uri file_uri = getFileUri(photoFileName, 0);
             // Add extended data to the intent
             intent.putExtra(MediaStore.EXTRA_OUTPUT, file_uri);
-            // If you call startActivityForResult() using an intent that no app can handle, your app will crash.
+            // If you call startActivityForResult() using an intent that no app can handle,
+            // your app will crash.
             // So as long as the result is not null, it's safe to use the intent.
 
             if (intent.resolveActivity(getPackageManager()) != null) {
@@ -239,20 +226,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
+    // Load a photo from the gallery
     public void onLoadPhotoClick(View view) {
-//        if(!marshmallowPermission.checkPermissionForReadfiles()){
-//            marshmallowPermission.requestPermissionForReadfiles();
-//        }
-//        else{
-            // Create intent for picking a photo from the gallery
-            Intent intent = new Intent(Intent.ACTION_PICK,
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-            // Bring up gallery to select a photo
-            startActivityForResult(intent, MY_PERMISSIONS_REQUEST_READ_PHOTOS);
-//        }
+        // Create intent for picking a photo from the gallery
+        Intent intent = new Intent(Intent.ACTION_PICK,
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+        // Bring up gallery to select a photo
+        startActivityForResult(intent, MY_PERMISSIONS_REQUEST_READ_PHOTOS);
     }
 
+    // Load a video from the gallery
     public void onLoadVideoClick(View view) {
         // Create intent for picking a video from the gallery
         Intent intent = new Intent(Intent.ACTION_PICK,
@@ -261,6 +244,7 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, MY_PERMISSIONS_REQUEST_READ_VIDEOS);
     }
 
+    // Record a video using the camera
     public void onRecordVideoClick(View v) {
         // Check permissions
         if (!marshmallowPermission.checkPermissionForCamera()) {
@@ -285,44 +269,50 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    //Backup all non-backup media files to Firebase Storage
+    //Manually backup all non-backup media files to Firebase Storage
     @SuppressLint("SetTextI18n")
     public void onBackupClick(View view) {
         backupButton.setEnabled(false);
         backupButton.setText("Uploading...");
 
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                // Get non-backup all media files from the local database
+            // Get non-backup all media files from the local database
             List<MediaItem> mediaItems = mediaItemDao.listAllNotBackup();
             List<UploadTask> uploadTasks = new ArrayList<>();
-            CountDownLatch latch = new CountDownLatch(mediaItems.size());  // 为每个媒体文件创建一个计数
+            // use CountDownLatch to wait for all uploads to complete
+            CountDownLatch latch = new CountDownLatch(mediaItems.size());
 
+            // Use a loop to create tasks for upload all media files
             for (MediaItem mediaItem : mediaItems) {
-                final StorageReference fileRef = storageReference.child(mediaItem.getFileType() + "/" + mediaItem.getCity() + "/" + mediaItem.getFileName());
+                final StorageReference fileRef = storageReference.child(
+                        mediaItem.getFileType() + "/" + mediaItem.getCity() + "/" +
+                                mediaItem.getFileName()
+                );
 
                 // Check if the file exists before uploading
                 fileRef.getMetadata().addOnSuccessListener(storageMetadata -> {
                     // File already exists, skip uploading
-//                    mediaItemDao.updateBackup(mediaItem.getID());
                     Executors.newSingleThreadExecutor().execute(() -> {
                         mediaItemDao.updateBackup(mediaItem.getID());
-                        Log.d("Upload", mediaItem.getFileName() + " already exists, skipping upload.");
+                        Log.d("Upload", mediaItem.getFileName() +
+                                " already exists, skipping upload.");
                     });
                     latch.countDown();
                 }).addOnFailureListener(exception -> {
                     // File does not exist, proceed with upload
-                    UploadTask uploadTask = fileRef.putFile(Uri.fromFile(new File(mediaItem.getLocalPath())));
+                    UploadTask uploadTask = fileRef.putFile(Uri.fromFile(
+                            new File(mediaItem.getLocalPath())
+                    ));
                     uploadTasks.add(uploadTask);
                     Log.d("Upload", "Uploading " + mediaItem.getFileName());
 
                     // Optionally handle individual file upload success/failure
                     uploadTask.addOnSuccessListener(taskSnapshot ->{
                                         Log.d("Upload",
-                                                mediaItem.getFileName() + " uploaded successfully.");
+                                                mediaItem.getFileName() +
+                                                        " uploaded successfully.");
                                         latch.countDown();
                                     }
-
-
                             )
                             .addOnFailureListener(exception1 ->{
                                         Log.e("Upload",
@@ -342,7 +332,10 @@ public class MainActivity extends AppCompatActivity {
             // Check if there are files to upload
             if (uploadTasks.isEmpty()) {
                 runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, "No files to upload.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(
+                            MainActivity.this, "No files to upload.",
+                            Toast.LENGTH_SHORT
+                    ).show();
                     backupButton.setEnabled(true);
                     backupButton.setText("Backup Manually");
                 });
@@ -350,12 +343,13 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // Handle all uploads after the loop
+            // Handle all uploads after the loop: all success or any failure
             Log.d("Upload", "Uploaded " + uploadTasks.size() + " files.");
             Tasks.whenAllSuccess(uploadTasks)
                     .addOnSuccessListener(results ->
                             {
-                                Log.d("Upload", uploadTasks.size() + "files uploaded successfully.");
+                                Log.d("Upload", uploadTasks.size() +
+                                        "files uploaded successfully.");
                                 Toast.makeText(MainActivity.this,
                                         "All files uploaded successfully.",
                                         Toast.LENGTH_SHORT).show();
@@ -383,6 +377,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // Get the current location of the device and store the city name
     private void getDeviceLocation() {
         try {
             if (marshmallowPermission.checkPermissionForLocation()) {
@@ -396,11 +391,16 @@ public class MainActivity extends AppCompatActivity {
                         // get latitude and longitude
                         double latitude = mLastKnownLocation.getLatitude();
                         double longitude = mLastKnownLocation.getLongitude();
-                        Log.d("Location", "Latitude: " + latitude + " Longitude: " + longitude);
+                        Log.d("Location",
+                                "Latitude: " + latitude + " Longitude: " + longitude);
                         // use Geocoder to covert latitude and longitude to city name
-                        Geocoder geocoder = new Geocoder(getApplicationContext(), Locale.getDefault());
+                        Geocoder geocoder = new Geocoder(
+                                getApplicationContext(), Locale.getDefault()
+                        );
                         try {
-                            List<Address> addresses = geocoder.getFromLocation(latitude, longitude, 1);
+                            List<Address> addresses = geocoder.getFromLocation(
+                                    latitude, longitude, 1
+                            );
                             if (addresses != null && addresses.size() > 0) {
                                 String city = addresses.get(0).getLocality();
                                 cityName = city.replaceAll("\\s+", "_");
@@ -419,6 +419,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // Automatically backup media files to Firebase Storage
     public void autoBackupToFirebase(File file, int type) {
         getDeviceLocation();
         String typestr = "images"; //type 0 is images, 1 is videos
@@ -454,7 +455,8 @@ public class MainActivity extends AppCompatActivity {
                 } catch (ExecutionException | InterruptedException e) {
                     throw new RuntimeException(e);
                 }
-                Log.d("AutoBackup", "On power saving mode. Battery is below 50% and no Charging, skipping backup.");
+                Log.d("AutoBackup", "On power saving mode. " +
+                        "Battery is below 50% and no Charging, skipping backup.");
                 return;
             }
 
@@ -472,13 +474,16 @@ public class MainActivity extends AppCompatActivity {
                     } catch (ExecutionException | InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    Log.d("AutoBackup", "On power saving mode. Device is in power saving mode, skipping backup.");
+                    Log.d("AutoBackup", "On power saving mode. " +
+                            "Device is in power saving mode, skipping backup.");
                     return;
                 }
             }
 
             // Check if the device is connected to a Wi-Fi network
-            ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            ConnectivityManager connManager = (ConnectivityManager) getSystemService(
+                    Context.CONNECTIVITY_SERVICE
+            );
             NetworkInfo wifi = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
             if (saveNetwork && !wifi.isConnected()) {
                 CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
@@ -491,12 +496,15 @@ public class MainActivity extends AppCompatActivity {
                 } catch (ExecutionException | InterruptedException e) {
                     throw new RuntimeException(e);
                 }
-                Log.d("AutoBackup", "On flow saving mode. Device is not connected to Wi-Fi, skipping backup.");
+                Log.d("AutoBackup", "On flow saving mode. " +
+                        "Device is not connected to Wi-Fi, skipping backup.");
                 return;
             }
         }
         // Create a storage reference from our app
-        StorageReference storageRef = storageReference.child(typestr + "/" + cityName + "/" + file.getName());
+        StorageReference storageRef = storageReference.child(
+                typestr + "/" + cityName + "/" + file.getName()
+        );
         // Upload file to Firebase Storage
         storageRef.putFile(Uri.fromFile(file))
                 .addOnSuccessListener(taskSnapshot -> {
@@ -510,7 +518,8 @@ public class MainActivity extends AppCompatActivity {
                         throw new RuntimeException(e);
                     }
                     // Get a URL to the uploaded content
-                    Toast.makeText(MainActivity.this, "Upload successful", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Upload successful",
+                            Toast.LENGTH_SHORT).show();
                     Log.d("Firebase", "Upload successful");
                 })
                 .addOnFailureListener(exception -> {
@@ -525,14 +534,14 @@ public class MainActivity extends AppCompatActivity {
                         throw new RuntimeException(e);
                     }
                     // Handle unsuccessful uploads
-                    Toast.makeText(MainActivity.this, "Upload failed", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this,
+                            "Upload failed", Toast.LENGTH_SHORT).show();
                     Log.d("Firebase", "Upload failed");
                 });
 
     }
 
     private void scanFile(String path) {
-
         MediaScannerConnection.scanFile(MainActivity.this,
                 new String[] { path }, null,
                 (path1, uri) -> Log.i("TAG", "Finished scanning " + path1));
@@ -576,10 +585,11 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             } else { // Result was a failure
-                Toast.makeText(this, "Picture wasn't taken AAA!",
+                Toast.makeText(this, "Error: Picture wasn't taken!",
                         Toast.LENGTH_SHORT).show();
             }
         } else if (requestCode == MY_PERMISSIONS_REQUEST_READ_PHOTOS) {
+            // Load the selected image into a preview
             if (resultCode == RESULT_OK) {
                 Uri photoUri = data.getData();
                 Bitmap selectedImage;
@@ -589,14 +599,13 @@ public class MainActivity extends AppCompatActivity {
                     ivPreview.setImageBitmap(selectedImage);
                     ivPreview.setVisibility(View.VISIBLE);
                 } catch (FileNotFoundException e) {
-                    // TODO Auto-generated catch block
                     e.printStackTrace();
                 } catch (IOException e) {
-                    // TODO Auto-generated catch block
                     e.printStackTrace();
                 }
             }
         } else if (requestCode == MY_PERMISSIONS_REQUEST_READ_VIDEOS) {
+            // Load the selected video into a preview
             if (resultCode == RESULT_OK) {
                 Uri videoUri = data.getData();
                 mVideoView.setVisibility(View.VISIBLE);

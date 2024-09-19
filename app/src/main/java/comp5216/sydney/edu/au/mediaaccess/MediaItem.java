@@ -25,7 +25,13 @@ public class MediaItem {
     @ColumnInfo(name = "isBackup")
     private boolean isBackup;
 
-    public MediaItem(String fileName, String localPath, String fileType, String city, boolean isBackup) {
+    public MediaItem(
+            String fileName,
+            String localPath,
+            String fileType,
+            String city,
+            boolean isBackup
+    ) {
         this.fileName = fileName;
         this.localPath = localPath;
         this.fileType = fileType;
@@ -45,32 +51,16 @@ public class MediaItem {
         return fileName;
     }
 
-    public void setFileName(String fileName) {
-        this.fileName = fileName;
-    }
-
     public String getLocalPath() {
         return localPath;
-    }
-
-    public void setLocalPath(String localPath) {
-        this.localPath = localPath;
     }
 
     public String getFileType() {
         return fileType;
     }
 
-    public void setFileType(String fileType) {
-        this.fileType = fileType;
-    }
-
     public String getCity() {
         return city;
-    }
-
-    public void setCity(String city) {
-        this.city = city;
     }
 
     public boolean isBackup() {
